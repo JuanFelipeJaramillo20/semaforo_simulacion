@@ -25,6 +25,32 @@ def llegada_carro(env, direccion, puente):
             yield req
             print(f"Semaforo en verde desde {direccion} en el tiempo {env.now}")
             yield env.process(puente.pasar_puente())
+            
+def llegada_carro_variante1(env, direccion, puente):
+    yield env.timeout(random.expovariate(1/3 if direccion == 'norte' else 1/5))
+    print(f"Carro desde {direccion} llega al puente en el tiempo {env.now}")
+
+    with (puente.semaforo_norte.request() if direccion == 'norte' else puente.semaforo_sur.request()) as req:
+        yield req
+        print(f"Semaforo en verde desde {direccion} en el tiempo {env.now}")
+        yield env.process(puente.pasar_puente())
+
+        # Después de pasar el puente, revisamos si hay carros esperando en la otra dirección
+        otra_direccion = 'norte' if direccion == 'sur' else 'sur'
+        carros_esperando = len(puente.semaforo_norte.queue) if otra_direccion == 'norte' else len(puente.semaforo_sur.queue)
+
+        # Permitimos que hasta 3 carros de la otra dirección pasen antes de cambiar el semáforo
+        for _ in range(min(carros_esperando, 3)):
+            yield env.process(puente.pasar_puente())
+
+        # Si hay más carros esperando en la otra dirección, bloqueamos el semáforo de esa dirección
+        if carros_esperando > 0:
+            if otra_direccion == 'norte':
+                puente.semaforo_sur.release()  # Liberamos el semáforo del sur
+            else:
+                puente.semaforo_norte.release()  # Liberamos el semáforo del norte
+            print(f"Semaforo en rojo desde {otra_direccion} en el tiempo {env.now}")
+           
 
 def simular(tiempo_simulacion, tiempo_verde_norte, tiempo_rojo_norte, tiempo_verde_sur, tiempo_rojo_sur):
     env = simpy.Environment()
@@ -34,8 +60,13 @@ def simular(tiempo_simulacion, tiempo_verde_norte, tiempo_rojo_norte, tiempo_ver
     
     puente = Puente(env, semaforo_norte, semaforo_sur)
 
+    #prueba normal 
     env.process(llegada_carro(env, 'norte', puente))
     env.process(llegada_carro(env, 'sur', puente))
+    
+    #prueba variante 1
+    # env.process(llegada_carro_variante1(env, 'norte', puente))
+    # env.process(llegada_carro_variante1(env, 'sur', puente))
 
     env.run(until=tiempo_simulacion)
 
